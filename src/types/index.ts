@@ -66,6 +66,19 @@ export interface DailyTargets {
   waterMl: number;  // 2500 ml
 }
 
+export interface ArchivedDaySummary {
+  date: string; // YYYY-MM-DD
+  caloriesLogged: number;
+  caloriesTarget: number;
+  caloriesHit: boolean;
+  stepsLogged: number;
+  stepsTarget: number;
+  stepsHit: boolean;
+  supplementsHit: boolean;
+  waterLogged: number;
+  weightKg?: number;
+}
+
 export interface DayConsistency {
   date: string; // YYYY-MM-DD
   dayLabel: string; // "M", "T", "W", "T", "F", "S", "S"

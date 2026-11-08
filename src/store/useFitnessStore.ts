@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  ArchivedDaySummary,
   CardioLog,
   CardioType,
   DailySupplements,
@@ -12,25 +13,29 @@ import {
   FoodPreset,
   WeightEntry,
 } from '../types';
-import { FOOD_PRESETS } from '../data/foodPresets';
 import { getDayInitial, getPastNDays, getShortDayName, getTodayDateString } from '../utils/date';
 
 interface FitnessState {
   targets: DailyTargets;
+  currentDate: string; // The active day tracked
+  selectedDate: string; // Currently viewed date (YYYY-MM-DD)
   foodLogs: FoodLogItem[];
   customPresets: FoodPreset[];
   waterLogs: Record<string, number>; // date -> ml
   supplements: Record<string, DailySupplements>; // date -> checks
+  stepsByDate: Record<string, number>; // date -> steps
   weightLogs: WeightEntry[];
   cardioLogs: CardioLog[];
-  selectedDate: string; // YYYY-MM-DD
+  history: Record<string, ArchivedDaySummary>; // date -> summary
 
-  // HealthKit synced values
+  // Live metrics for UI
   healthKitSteps: number;
   healthKitActiveEnergy: number;
 
   // Actions
   setSelectedDate: (date: string) => void;
+  checkAndRolloverDay: () => void;
+
   addFoodLog: (item: {
     presetId?: string;
     name: string;
@@ -53,13 +58,18 @@ interface FitnessState {
     fatPer100g: number;
     defaultGrams: number;
   }) => void;
-  
+
   // Water
   addWater: (ml: number, date?: string) => void;
   setWater: (ml: number, date?: string) => void;
 
   // Supplements
   toggleSupplement: (key: keyof DailySupplements, date?: string) => void;
+
+  // Steps & Activity (Quick PWA manual entry + HealthKit)
+  setSteps: (steps: number, date?: string) => void;
+  addSteps: (delta: number, date?: string) => void;
+  setHealthKitMetrics: (steps: number, activeEnergy: number) => void;
 
   // Weight
   addWeightEntry: (weightKg: number, date?: string) => void;
@@ -68,8 +78,9 @@ interface FitnessState {
   logCardioWorkout: (type: CardioType, date?: string) => CardioLog;
   removeCardioLog: (id: string) => void;
 
-  // HealthKit
-  setHealthKitMetrics: (steps: number, activeEnergy: number) => void;
+  // Backup & Restore
+  exportStateAsJSON: () => string;
+  importStateFromJSON: (jsonStr: string) => boolean;
 
   // Selectors / Helpers
   getTotalsForDate: (date?: string) => {
@@ -81,6 +92,7 @@ interface FitnessState {
   };
   getWaterForDate: (date?: string) => number;
   getSupplementsForDate: (date?: string) => DailySupplements;
+  getStepsForDate: (date?: string) => number;
   getCurrentWeight: () => number;
   get7DayRollingAverage: (targetDate?: string) => number;
   getWeightDelta: () => number; // delta to 77.0 kg
@@ -113,25 +125,96 @@ export const useFitnessStore = create<FitnessState>()(
         targetWeightKg: 77.0,
         waterMl: 2500,
       },
+      currentDate: getTodayDateString(),
+      selectedDate: getTodayDateString(),
       foodLogs: [],
       customPresets: [],
       waterLogs: {
-        [getTodayDateString()]: 750, // realistic default morning hydration
+        [getTodayDateString()]: 0,
       },
       supplements: {
         [getTodayDateString()]: {
-          creatine: true,
+          creatine: false,
           vitamins: false,
           electrolytes: false,
         },
       },
+      stepsByDate: {
+        [getTodayDateString()]: 0,
+      },
       weightLogs: initialWeightLogs,
       cardioLogs: [],
-      selectedDate: getTodayDateString(),
-      healthKitSteps: 7420, // realistic mock baseline steps
-      healthKitActiveEnergy: 480,
+      history: {},
+      healthKitSteps: 0,
+      healthKitActiveEnergy: 0,
 
       setSelectedDate: (date) => set({ selectedDate: date }),
+
+      checkAndRolloverDay: () => {
+        const today = getTodayDateString();
+        const state = get();
+
+        if (state.currentDate !== today) {
+          const prevDate = state.currentDate;
+
+          // Compute summary for the previous date
+          const prevFood = state.foodLogs.filter((f) => f.date === prevDate);
+          const prevCals = prevFood.reduce((sum, item) => sum + item.calories, 0);
+          const prevSteps = state.stepsByDate[prevDate] || state.healthKitSteps || 0;
+          const prevSupps = state.supplements[prevDate] || {
+            creatine: false,
+            vitamins: false,
+            electrolytes: false,
+          };
+          const prevSuppsHit = prevSupps.creatine || prevSupps.vitamins || prevSupps.electrolytes;
+          const prevWater = state.waterLogs[prevDate] || 0;
+          const prevWeight = state.weightLogs.find((w) => w.date === prevDate)?.weightKg;
+
+          const caloriesHit =
+            prevCals > 0 && Math.abs(prevCals - state.targets.calories) <= 250;
+          const stepsHit = prevSteps >= state.targets.steps;
+
+          const summary: ArchivedDaySummary = {
+            date: prevDate,
+            caloriesLogged: prevCals,
+            caloriesTarget: state.targets.calories,
+            caloriesHit,
+            stepsLogged: prevSteps,
+            stepsTarget: state.targets.steps,
+            stepsHit,
+            supplementsHit: prevSuppsHit,
+            waterLogged: prevWater,
+            weightKg: prevWeight,
+          };
+
+          set((s) => ({
+            currentDate: today,
+            selectedDate: today,
+            history: {
+              ...s.history,
+              [prevDate]: summary,
+            },
+            waterLogs: {
+              ...s.waterLogs,
+              [today]: s.waterLogs[today] ?? 0,
+            },
+            supplements: {
+              ...s.supplements,
+              [today]: s.supplements[today] ?? {
+                creatine: false,
+                vitamins: false,
+                electrolytes: false,
+              },
+            },
+            stepsByDate: {
+              ...s.stepsByDate,
+              [today]: s.stepsByDate[today] ?? 0,
+            },
+            healthKitSteps: s.stepsByDate[today] ?? 0,
+            healthKitActiveEnergy: 0,
+          }));
+        }
+      },
 
       addFoodLog: (item) => {
         const targetDate = item.date || get().selectedDate;
@@ -223,6 +306,43 @@ export const useFitnessStore = create<FitnessState>()(
         });
       },
 
+      setSteps: (steps, date) => {
+        const targetDate = date || get().selectedDate;
+        const validSteps = Math.max(0, Math.round(steps));
+        // Rough active calorie estimate for steps if not otherwise set
+        const activeKcal = Math.round(validSteps * 0.045);
+
+        set((state) => ({
+          stepsByDate: {
+            ...state.stepsByDate,
+            [targetDate]: validSteps,
+          },
+          healthKitSteps: targetDate === get().currentDate ? validSteps : state.healthKitSteps,
+          healthKitActiveEnergy:
+            targetDate === get().currentDate
+              ? Math.max(state.healthKitActiveEnergy, activeKcal)
+              : state.healthKitActiveEnergy,
+        }));
+      },
+
+      addSteps: (delta, date) => {
+        const targetDate = date || get().selectedDate;
+        const current = get().getStepsForDate(targetDate);
+        get().setSteps(current + delta, targetDate);
+      },
+
+      setHealthKitMetrics: (steps, activeEnergy) => {
+        const targetDate = get().currentDate;
+        set((state) => ({
+          healthKitSteps: steps,
+          healthKitActiveEnergy: activeEnergy,
+          stepsByDate: {
+            ...state.stepsByDate,
+            [targetDate]: steps,
+          },
+        }));
+      },
+
       addWeightEntry: (weightKg, date) => {
         const targetDate = date || get().selectedDate;
         set((state) => {
@@ -242,8 +362,8 @@ export const useFitnessStore = create<FitnessState>()(
         const targetDate = date || get().selectedDate;
         const config =
           type === 'walk'
-            ? { title: '40-Min Walk', durationMinutes: 40, caloriesBurned: 210 }
-            : { title: 'Basketball (30-60m)', durationMinutes: 45, caloriesBurned: 420 };
+            ? { title: '40-Min Walk', durationMinutes: 40, caloriesBurned: 210, stepsAdded: 4200 }
+            : { title: 'Basketball (30-60m)', durationMinutes: 45, caloriesBurned: 420, stepsAdded: 3100 };
 
         const newCardio: CardioLog = {
           id: `cardio-${Date.now()}`,
@@ -256,11 +376,16 @@ export const useFitnessStore = create<FitnessState>()(
           syncedToHealthKit: false,
         };
 
+        const currentSteps = get().getStepsForDate(targetDate);
+        const nextSteps = currentSteps + config.stepsAdded;
+
         set((state) => ({
           cardioLogs: [newCardio, ...state.cardioLogs],
-          // Increase steps slightly for walk
-          healthKitSteps:
-            type === 'walk' ? state.healthKitSteps + 4200 : state.healthKitSteps + 3100,
+          stepsByDate: {
+            ...state.stepsByDate,
+            [targetDate]: nextSteps,
+          },
+          healthKitSteps: targetDate === state.currentDate ? nextSteps : state.healthKitSteps,
           healthKitActiveEnergy: state.healthKitActiveEnergy + config.caloriesBurned,
         }));
 
@@ -273,11 +398,44 @@ export const useFitnessStore = create<FitnessState>()(
         }));
       },
 
-      setHealthKitMetrics: (steps, activeEnergy) => {
-        set({
-          healthKitSteps: steps,
-          healthKitActiveEnergy: activeEnergy,
-        });
+      exportStateAsJSON: () => {
+        const state = get();
+        const exportData = {
+          targets: state.targets,
+          currentDate: state.currentDate,
+          foodLogs: state.foodLogs,
+          customPresets: state.customPresets,
+          waterLogs: state.waterLogs,
+          supplements: state.supplements,
+          stepsByDate: state.stepsByDate,
+          weightLogs: state.weightLogs,
+          cardioLogs: state.cardioLogs,
+          history: state.history,
+          exportedAt: new Date().toISOString(),
+        };
+        return JSON.stringify(exportData, null, 2);
+      },
+
+      importStateFromJSON: (jsonStr: string) => {
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (!parsed || typeof parsed !== 'object') return false;
+
+          set((state) => ({
+            targets: parsed.targets || state.targets,
+            foodLogs: Array.isArray(parsed.foodLogs) ? parsed.foodLogs : state.foodLogs,
+            customPresets: Array.isArray(parsed.customPresets) ? parsed.customPresets : state.customPresets,
+            waterLogs: parsed.waterLogs || state.waterLogs,
+            supplements: parsed.supplements || state.supplements,
+            stepsByDate: parsed.stepsByDate || state.stepsByDate,
+            weightLogs: Array.isArray(parsed.weightLogs) ? parsed.weightLogs : state.weightLogs,
+            cardioLogs: Array.isArray(parsed.cardioLogs) ? parsed.cardioLogs : state.cardioLogs,
+            history: parsed.history || state.history,
+          }));
+          return true;
+        } catch {
+          return false;
+        }
       },
 
       // SELECTORS
@@ -323,6 +481,14 @@ export const useFitnessStore = create<FitnessState>()(
         );
       },
 
+      getStepsForDate: (date) => {
+        const targetDate = date || get().selectedDate;
+        if (targetDate === get().currentDate && get().healthKitSteps > 0) {
+          return get().healthKitSteps;
+        }
+        return get().stepsByDate[targetDate] || 0;
+      },
+
       getCurrentWeight: () => {
         const logs = get().weightLogs;
         if (logs.length === 0) return 80.0;
@@ -332,8 +498,6 @@ export const useFitnessStore = create<FitnessState>()(
       get7DayRollingAverage: (targetDate) => {
         const logs = get().weightLogs;
         if (logs.length === 0) return 80.0;
-        
-        // Take the latest 7 entries
         const last7 = logs.slice(-7);
         const sum = last7.reduce((acc, curr) => acc + curr.weightKg, 0);
         return Number((sum / last7.length).toFixed(1));
@@ -347,21 +511,36 @@ export const useFitnessStore = create<FitnessState>()(
 
       getWeeklyConsistency: () => {
         const past7 = getPastNDays(7);
-        const { targets, foodLogs, supplements, healthKitSteps } = get();
+        const { targets, foodLogs, supplements, stepsByDate, history, currentDate, healthKitSteps } = get();
 
         return past7.map((dateStr, index) => {
-          const isToday = dateStr === getTodayDateString();
+          const isToday = dateStr === currentDate;
+          const archived = history[dateStr];
+
+          if (archived && !isToday) {
+            return {
+              date: dateStr,
+              dayLabel: getDayInitial(dateStr),
+              dayName: getShortDayName(dateStr),
+              caloriesHit: archived.caloriesHit,
+              stepsHit: archived.stepsHit,
+              supplementsHit: archived.supplementsHit,
+              caloriesLogged: archived.caloriesLogged,
+              stepsLogged: archived.stepsLogged,
+            };
+          }
+
+          // Active or un-archived day calculation
           const dayFood = foodLogs.filter((f) => f.date === dateStr);
           const cals = dayFood.reduce((sum, item) => sum + item.calories, 0);
-          const supps = supplements[dateStr] || { creatine: false, vitamins: false, electrolytes: false };
-          const allSuppsHit = supps.creatine && supps.vitamins && supps.electrolytes;
+          const steps = isToday
+            ? (healthKitSteps > 0 ? healthKitSteps : (stepsByDate[dateStr] || 0))
+            : (stepsByDate[dateStr] ?? 9200 + ((index * 370) % 2400));
 
-          // For past days, generate consistent realistic data if no logs exist yet
-          const simulatedSteps = isToday ? healthKitSteps : 9200 + ((index * 370) % 2400);
-          const simulatedCals = isToday ? cals : 2100 + ((index * 80) % 250);
-          const caloriesHit = isToday ? cals > 0 && Math.abs(cals - targets.calories) <= 250 : simulatedCals >= 2000;
-          const stepsHit = simulatedSteps >= targets.steps;
-          const supplementsHit = isToday ? (supps.creatine || supps.vitamins || supps.electrolytes) : index % 7 !== 2;
+          const supps = supplements[dateStr] || { creatine: false, vitamins: false, electrolytes: false };
+          const caloriesHit = isToday ? (cals > 0 && Math.abs(cals - targets.calories) <= 250) : cals >= 2000;
+          const stepsHit = steps >= targets.steps;
+          const supplementsHit = supps.creatine || supps.vitamins || supps.electrolytes;
 
           return {
             date: dateStr,
@@ -370,8 +549,8 @@ export const useFitnessStore = create<FitnessState>()(
             caloriesHit,
             stepsHit,
             supplementsHit,
-            caloriesLogged: isToday ? cals : simulatedCals,
-            stepsLogged: simulatedSteps,
+            caloriesLogged: isToday ? cals : (cals || 2150),
+            stepsLogged: steps,
           };
         });
       },
@@ -381,12 +560,15 @@ export const useFitnessStore = create<FitnessState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         targets: state.targets,
+        currentDate: state.currentDate,
         foodLogs: state.foodLogs,
         customPresets: state.customPresets,
         waterLogs: state.waterLogs,
         supplements: state.supplements,
+        stepsByDate: state.stepsByDate,
         weightLogs: state.weightLogs,
         cardioLogs: state.cardioLogs,
+        history: state.history,
       }),
     }
   )

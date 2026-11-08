@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,14 +13,17 @@ import { WeightPillModal } from '../../src/components/today/WeightPillModal';
 import { MacroHeroCard } from '../../src/components/today/MacroHeroCard';
 import { ActivityCard } from '../../src/components/today/ActivityCard';
 import { HydrationSupplementsCard } from '../../src/components/today/HydrationSupplementsCard';
+import { SettingsModal } from '../../src/components/common/SettingsModal';
 import { useHealthKit } from '../../src/hooks/useHealthKit';
 import { useFitnessStore } from '../../src/store/useFitnessStore';
-import { Trash2, Utensils } from 'lucide-react-native';
+import { Trash2, Utensils, Settings } from 'lucide-react-native';
 import { triggerLightHaptic } from '../../src/utils/haptics';
 
 export default function TodayScreen() {
   const { isMockMode, logDedicatedWorkout, refreshHealthData, syncWeightToHealthKit } =
     useHealthKit();
+
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   const selectedDate = useFitnessStore((state) => state.selectedDate);
   const foodLogs = useFitnessStore((state) =>
@@ -46,13 +49,26 @@ export default function TodayScreen() {
             <Text style={styles.dateHeader}>{formatHeaderDate()}</Text>
             <Text style={styles.subGreeting}>Executive Summary</Text>
           </View>
-          <WeightPillModal onSyncHealthKit={syncWeightToHealthKit} />
+
+          <View className="flex-row items-center">
+            <WeightPillModal onSyncHealthKit={syncWeightToHealthKit} />
+            <TouchableOpacity
+              onPress={() => {
+                triggerLightHaptic();
+                setSettingsVisible(true);
+              }}
+              style={styles.settingsButton}
+              activeOpacity={0.7}
+            >
+              <Settings size={18} color="#8E8E93" strokeWidth={1.75} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 1. Macro Hero Card */}
         <MacroHeroCard />
 
-        {/* 2. Activity & Cardio Card (Apple Health Synced) */}
+        {/* 2. Activity & Cardio Card (Apple Health Synced + Quick PWA Steps) */}
         <ActivityCard
           onLogWorkout={logDedicatedWorkout}
           onRefresh={refreshHealthData}
@@ -102,6 +118,12 @@ export default function TodayScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Settings & Backup Modal */}
+      <SettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -126,6 +148,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8E8E93',
     marginTop: 1,
+  },
+  settingsButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
   sectionHeaderTitle: {
     fontSize: 13,
