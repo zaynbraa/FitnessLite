@@ -43,7 +43,7 @@ export interface DailySupplements {
   electrolytes: boolean;
 }
 
-export type CardioType = 'walk' | 'basketball';
+export type CardioType = 'walk' | 'basketball' | 'gym';
 
 export interface CardioLog {
   id: string;
@@ -52,6 +52,8 @@ export interface CardioLog {
   title: string;
   durationMinutes: number;
   caloriesBurned: number;
+  intensity?: string;
+  met?: number;
   timestamp: number;
   syncedToHealthKit: boolean;
 }
@@ -77,6 +79,7 @@ export interface ArchivedDaySummary {
   supplementsHit: boolean;
   waterLogged: number;
   weightKg?: number;
+  activeCaloriesBurned?: number;
 }
 
 export interface DayConsistency {

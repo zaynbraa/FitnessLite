@@ -74,8 +74,21 @@ interface FitnessState {
   // Weight
   addWeightEntry: (weightKg: number, date?: string) => void;
 
-  // Cardio
-  logCardioWorkout: (type: CardioType, date?: string) => CardioLog;
+  // Cardio & Workouts
+  logCardioWorkout: (
+    paramsOrType:
+      | CardioType
+      | {
+          type: CardioType;
+          durationMinutes: number;
+          met: number;
+          intensityLabel: string;
+          customTitle?: string;
+          date?: string;
+        },
+    date?: string
+  ) => CardioLog;
+  updateCardioLog: (id: string, durationMinutes: number) => void;
   removeCardioLog: (id: string) => void;
 
   // Backup & Restore
@@ -90,6 +103,11 @@ interface FitnessState {
     carbs: number;
     fat: number;
     remainingCalories: number;
+  };
+  getActiveBurnForDate: (date?: string) => {
+    stepCalories: number;
+    workoutCalories: number;
+    totalActiveCalories: number;
   };
   getWaterForDate: (date?: string) => number;
   getSupplementsForDate: (date?: string) => DailySupplements;
@@ -174,6 +192,12 @@ export const useFitnessStore = create<FitnessState>()(
           const prevSuppsHit = prevSupps.creatine || prevSupps.vitamins || prevSupps.electrolytes;
           const prevWater = waterLogs[prevDate] || 0;
           const prevWeight = weightLogs.find((w) => w.date === prevDate)?.weightKg;
+          const weightForBurn =
+            prevWeight || (weightLogs.length > 0 ? weightLogs[weightLogs.length - 1].weightKg : 85.0);
+          const prevStepBurn = Math.round(prevSteps * (weightForBurn * 0.00053));
+          const prevCardio = (state.cardioLogs || []).filter((c) => c.date === prevDate);
+          const prevWorkoutBurn = prevCardio.reduce((sum, item) => sum + (item.caloriesBurned || 0), 0);
+          const totalActiveBurn = prevStepBurn + prevWorkoutBurn;
 
           const caloriesHit =
             prevCals > 0 && Math.abs(prevCals - targets.calories) <= 250;
@@ -190,6 +214,7 @@ export const useFitnessStore = create<FitnessState>()(
             supplementsHit: prevSuppsHit,
             waterLogged: prevWater,
             weightKg: prevWeight,
+            activeCaloriesBurned: totalActiveBurn,
           };
 
           set((s) => ({
@@ -370,38 +395,93 @@ export const useFitnessStore = create<FitnessState>()(
         });
       },
 
-      logCardioWorkout: (type, date) => {
-        const targetDate = date || get().selectedDate || getTodayDateString();
-        const config =
-          type === 'walk'
-            ? { title: '40-Min Walk', durationMinutes: 40, caloriesBurned: 210, stepsAdded: 4200 }
-            : { title: 'Basketball (30-60m)', durationMinutes: 45, caloriesBurned: 420, stepsAdded: 3100 };
+      logCardioWorkout: (paramsOrType, date) => {
+        const targetDate =
+          (typeof paramsOrType === 'object' ? paramsOrType.date : date) ||
+          get().selectedDate ||
+          getTodayDateString();
+
+        let type: CardioType = 'walk';
+        let title = 'Workout';
+        let durationMinutes = 30;
+        let met = 4.5;
+        let intensityLabel = 'Moderate';
+        let caloriesBurned = 0;
+
+        const currentWeightKg = get().getCurrentWeight() || 85.0;
+
+        if (typeof paramsOrType === 'object') {
+          type = paramsOrType.type;
+          durationMinutes = paramsOrType.durationMinutes;
+          met = paramsOrType.met;
+          intensityLabel = paramsOrType.intensityLabel;
+          title =
+            paramsOrType.customTitle ||
+            (type === 'basketball'
+              ? `Basketball (${intensityLabel})`
+              : type === 'gym'
+              ? `Gym (${intensityLabel})`
+              : `Walk (${intensityLabel})`);
+          caloriesBurned = Math.round(((met * 3.5 * currentWeightKg) / 200) * durationMinutes);
+        } else {
+          type = paramsOrType;
+          if (type === 'walk') {
+            title = 'Walk (Brisk)';
+            durationMinutes = 40;
+            met = 4.3;
+            intensityLabel = 'Brisk';
+          } else if (type === 'basketball') {
+            title = 'Basketball (Half-Court)';
+            durationMinutes = 45;
+            met = 6.5;
+            intensityLabel = 'Half-Court';
+          } else {
+            title = 'Gym Session';
+            durationMinutes = 45;
+            met = 4.5;
+            intensityLabel = 'Standard';
+          }
+          caloriesBurned = Math.round(((met * 3.5 * currentWeightKg) / 200) * durationMinutes);
+        }
 
         const newCardio: CardioLog = {
-          id: `cardio-${Date.now()}`,
+          id: `cardio-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           date: targetDate,
           type,
-          title: config.title,
-          durationMinutes: config.durationMinutes,
-          caloriesBurned: config.caloriesBurned,
+          title,
+          durationMinutes,
+          caloriesBurned,
+          intensity: intensityLabel,
+          met,
           timestamp: Date.now(),
           syncedToHealthKit: false,
         };
 
-        const currentSteps = get().getStepsForDate(targetDate);
-        const nextSteps = currentSteps + config.stepsAdded;
-
         set((state) => ({
           cardioLogs: [newCardio, ...(state.cardioLogs || [])],
-          stepsByDate: {
-            ...(state.stepsByDate || {}),
-            [targetDate]: nextSteps,
-          },
-          healthKitSteps: targetDate === state.currentDate ? nextSteps : state.healthKitSteps,
-          healthKitActiveEnergy: (state.healthKitActiveEnergy || 0) + config.caloriesBurned,
+          healthKitActiveEnergy: (state.healthKitActiveEnergy || 0) + caloriesBurned,
         }));
 
         return newCardio;
+      },
+
+      updateCardioLog: (id, durationMinutes) => {
+        const currentWeightKg = get().getCurrentWeight() || 85.0;
+        set((state) => {
+          const updated = (state.cardioLogs || []).map((c) => {
+            if (c.id === id) {
+              const met = c.met || 4.5;
+              const newCalories = Math.round(((met * 3.5 * currentWeightKg) / 200) * durationMinutes);
+              return {
+                ...c,
+                durationMinutes,
+                caloriesBurned: newCalories,
+              };
+            }
+            return c;
+          });
+          return { cardioLogs: updated };
+        });
       },
 
       removeCardioLog: (id) => {
@@ -524,8 +604,22 @@ export const useFitnessStore = create<FitnessState>()(
 
       getCurrentWeight: () => {
         const logs = get().weightLogs || [];
-        if (logs.length === 0) return 80.0;
+        if (logs.length === 0) return 85.0;
         return logs[logs.length - 1].weightKg;
+      },
+
+      getActiveBurnForDate: (date) => {
+        const targetDate = date || get().selectedDate || getTodayDateString();
+        const steps = get().getStepsForDate(targetDate);
+        const weight = get().getCurrentWeight() || 85.0;
+        const stepCalories = Math.round(steps * (weight * 0.00053));
+        const cardioLogs = (get().cardioLogs || []).filter((c) => c.date === targetDate);
+        const workoutCalories = cardioLogs.reduce((sum, c) => sum + (c.caloriesBurned || 0), 0);
+        return {
+          stepCalories,
+          workoutCalories,
+          totalActiveCalories: stepCalories + workoutCalories,
+        };
       },
 
       get7DayRollingAverage: () => {

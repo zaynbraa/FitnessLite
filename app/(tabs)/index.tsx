@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { formatHeaderDate } from '../../src/utils/date';
 import { WeightPillModal } from '../../src/components/today/WeightPillModal';
 import { MacroHeroCard } from '../../src/components/today/MacroHeroCard';
@@ -17,17 +18,59 @@ import { SettingsModal } from '../../src/components/common/SettingsModal';
 import { useHealthKit } from '../../src/hooks/useHealthKit';
 import { useFitnessStore } from '../../src/store/useFitnessStore';
 import { Trash2, Utensils, Settings } from 'lucide-react-native';
-import { triggerLightHaptic } from '../../src/utils/haptics';
+import { triggerLightHaptic, triggerSuccessHaptic } from '../../src/utils/haptics';
 
 export default function TodayScreen() {
   const { isMockMode, logDedicatedWorkout, refreshHealthData, syncWeightToHealthKit } =
     useHealthKit();
 
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const router = useRouter();
+  const params = useLocalSearchParams<{ syncSteps?: string }>();
 
   const selectedDate = useFitnessStore((state) => state.selectedDate);
   const allFoodLogs = useFitnessStore((state) => state.foodLogs);
   const removeFoodLog = useFitnessStore((state) => state.removeFoodLog);
+  const setSteps = useFitnessStore((state) => state.setSteps);
+
+  // Apple Shortcuts URL Bridge: ?syncSteps=9420
+  useEffect(() => {
+    const handleSyncSteps = () => {
+      let stepStr: string | undefined = params.syncSteps;
+      if (!stepStr && typeof window !== 'undefined' && window.location?.search) {
+        const searchParams = new URLSearchParams(window.location.search);
+        stepStr = searchParams.get('syncSteps') || undefined;
+      }
+
+      if (stepStr) {
+        const count = parseInt(stepStr, 10);
+        if (!isNaN(count) && count >= 0) {
+          setSteps(count);
+          triggerSuccessHaptic();
+
+          // Clean query parameter from browser URL without triggering route reload
+          if (typeof window !== 'undefined' && window.history && window.location?.search) {
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete('syncSteps');
+            window.history.replaceState({}, '', cleanUrl.pathname + (cleanUrl.search || ''));
+          }
+          router.replace('/(tabs)');
+        }
+      }
+    };
+
+    handleSyncSteps();
+
+    // Re-check on window focus when iOS Shortcut opens Safari PWA in background
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleSyncSteps);
+      document.addEventListener('visibilitychange', handleSyncSteps);
+      return () => {
+        window.removeEventListener('focus', handleSyncSteps);
+        document.removeEventListener('visibilitychange', handleSyncSteps);
+      };
+    }
+  }, [params.syncSteps, setSteps, router]);
 
   const foodLogs = useMemo(() => {
     return (allFoodLogs || []).filter((l) => l.date === selectedDate);

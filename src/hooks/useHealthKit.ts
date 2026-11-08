@@ -139,8 +139,8 @@ export function useHealthKit(): HealthKitState {
           const endDate = new Date();
           const startDate = new Date(endDate.getTime() - cardio.durationMinutes * 60 * 1000);
           
-          // Activity types: walking (52), basketball (6)
-          const activityType = type === 'walk' ? 52 : 6;
+          // Activity types: walking (52), basketball (6), traditional strength training (20)
+          const activityType = type === 'walk' ? 52 : type === 'basketball' ? 6 : 20;
 
           if (typeof HealthKitModule.saveWorkoutSample === 'function') {
             await HealthKitModule.saveWorkoutSample(
