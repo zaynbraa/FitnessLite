@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Svg, { Path, Line, Circle, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Card } from '../common/Card';
@@ -10,8 +10,18 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 export const WeightChart: React.FC = () => {
   const weightLogs = useFitnessStore((state) => state.weightLogs);
   const targetWeight = useFitnessStore((state) => state.targets.targetWeightKg);
-  const currentWeight = useFitnessStore((state) => state.getCurrentWeight());
-  const rollingAvg = useFitnessStore((state) => state.get7DayRollingAverage());
+
+  const currentWeight = useMemo(() => {
+    if (!weightLogs || weightLogs.length === 0) return 80.0;
+    return weightLogs[weightLogs.length - 1].weightKg;
+  }, [weightLogs]);
+
+  const rollingAvg = useMemo(() => {
+    if (!weightLogs || weightLogs.length === 0) return 80.0;
+    const last7 = weightLogs.slice(-7);
+    const sum = last7.reduce((acc, curr) => acc + curr.weightKg, 0);
+    return Number((sum / last7.length).toFixed(1));
+  }, [weightLogs]);
 
   // Metrics
   const startWeight = weightLogs.length > 0 ? weightLogs[0].weightKg : 85.0;

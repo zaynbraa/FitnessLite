@@ -1,11 +1,31 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '../common/Card';
 import { useFitnessStore } from '../../store/useFitnessStore';
 import { CheckCircle2, Flame, Footprints, Pill } from 'lucide-react-native';
 
 export const ConsistencyGrid: React.FC = () => {
-  const weeklyData = useFitnessStore((state) => state.getWeeklyConsistency());
+  const foodLogs = useFitnessStore((state) => state.foodLogs);
+  const history = useFitnessStore((state) => state.history);
+  const stepsByDate = useFitnessStore((state) => state.stepsByDate);
+  const supplements = useFitnessStore((state) => state.supplements);
+  const targets = useFitnessStore((state) => state.targets);
+  const currentDate = useFitnessStore((state) => state.currentDate);
+  const healthKitSteps = useFitnessStore((state) => state.healthKitSteps);
+  const getWeeklyConsistency = useFitnessStore((state) => state.getWeeklyConsistency);
+
+  const weeklyData = useMemo(() => {
+    return getWeeklyConsistency();
+  }, [
+    foodLogs,
+    history,
+    stepsByDate,
+    supplements,
+    targets,
+    currentDate,
+    healthKitSteps,
+    getWeeklyConsistency,
+  ]);
 
   return (
     <Card className="mb-4">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,10 +21,21 @@ interface WeightPillModalProps {
 
 export const WeightPillModal: React.FC<WeightPillModalProps> = ({ onSyncHealthKit }) => {
   const [modalVisible, setModalVisible] = useState(false);
-  const currentWeight = useFitnessStore((state) => state.getCurrentWeight());
-  const rollingAvg = useFitnessStore((state) => state.get7DayRollingAverage());
+  const weightLogs = useFitnessStore((state) => state.weightLogs);
   const targetWeight = useFitnessStore((state) => state.targets.targetWeightKg);
   const addWeightEntry = useFitnessStore((state) => state.addWeightEntry);
+
+  const currentWeight = useMemo(() => {
+    if (!weightLogs || weightLogs.length === 0) return 80.0;
+    return weightLogs[weightLogs.length - 1].weightKg;
+  }, [weightLogs]);
+
+  const rollingAvg = useMemo(() => {
+    if (!weightLogs || weightLogs.length === 0) return 80.0;
+    const last7 = weightLogs.slice(-7);
+    const sum = last7.reduce((acc, curr) => acc + curr.weightKg, 0);
+    return Number((sum / last7.length).toFixed(1));
+  }, [weightLogs]);
 
   const [inputWeight, setInputWeight] = useState(currentWeight.toFixed(1));
 

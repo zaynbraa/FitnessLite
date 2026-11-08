@@ -1,12 +1,37 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '../common/Card';
 import { useFitnessStore } from '../../store/useFitnessStore';
 import { Flame } from 'lucide-react-native';
 
 export const MacroHeroCard: React.FC = () => {
-  const totals = useFitnessStore((state) => state.getTotalsForDate());
+  const foodLogs = useFitnessStore((state) => state.foodLogs);
+  const selectedDate = useFitnessStore((state) => state.selectedDate);
   const targets = useFitnessStore((state) => state.targets);
+
+  const totals = useMemo(() => {
+    const logs = (foodLogs || []).filter((l) => l.date === selectedDate);
+    const calculated = logs.reduce(
+      (acc, item) => {
+        acc.calories += item.calories || 0;
+        acc.protein += item.protein || 0;
+        acc.carbs += item.carbs || 0;
+        acc.fat += item.fat || 0;
+        return acc;
+      },
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+
+    const remainingCalories = Math.max(0, targets.calories - calculated.calories);
+
+    return {
+      calories: Math.round(calculated.calories),
+      protein: Math.round(calculated.protein),
+      carbs: Math.round(calculated.carbs),
+      fat: Math.round(calculated.fat),
+      remainingCalories,
+    };
+  }, [foodLogs, selectedDate, targets.calories]);
 
   const calPercent = Math.min(100, Math.round((totals.calories / targets.calories) * 100));
   const proteinPercent = Math.min(100, Math.round((totals.protein / targets.protein) * 100));

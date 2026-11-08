@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,10 +26,12 @@ export default function TodayScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
 
   const selectedDate = useFitnessStore((state) => state.selectedDate);
-  const foodLogs = useFitnessStore((state) =>
-    state.foodLogs.filter((l) => l.date === selectedDate)
-  );
+  const allFoodLogs = useFitnessStore((state) => state.foodLogs);
   const removeFoodLog = useFitnessStore((state) => state.removeFoodLog);
+
+  const foodLogs = useMemo(() => {
+    return (allFoodLogs || []).filter((l) => l.date === selectedDate);
+  }, [allFoodLogs, selectedDate]);
 
   const handleDeleteFood = (id: string) => {
     triggerLightHaptic();

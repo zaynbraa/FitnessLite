@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,11 +30,20 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({
   isMockMode = true,
 }) => {
   const selectedDate = useFitnessStore((state) => state.selectedDate);
-  const steps = useFitnessStore((state) => state.getStepsForDate(selectedDate));
+  const currentDate = useFitnessStore((state) => state.currentDate);
+  const stepsByDate = useFitnessStore((state) => state.stepsByDate);
+  const healthKitSteps = useFitnessStore((state) => state.healthKitSteps);
   const activeEnergy = useFitnessStore((state) => state.healthKitActiveEnergy);
   const stepTarget = useFitnessStore((state) => state.targets.steps);
   const cardioLogs = useFitnessStore((state) => state.cardioLogs);
   const setSteps = useFitnessStore((state) => state.setSteps);
+
+  const steps = useMemo(() => {
+    if (selectedDate === currentDate && healthKitSteps > 0) {
+      return healthKitSteps;
+    }
+    return (stepsByDate || {})[selectedDate] || 0;
+  }, [selectedDate, currentDate, healthKitSteps, stepsByDate]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [stepModalVisible, setStepModalVisible] = useState(false);

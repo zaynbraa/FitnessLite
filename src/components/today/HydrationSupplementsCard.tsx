@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Card } from '../common/Card';
 import { useFitnessStore } from '../../store/useFitnessStore';
@@ -7,13 +7,24 @@ import { triggerLightHaptic, triggerSelectionHaptic } from '../../utils/haptics'
 import { DailySupplements } from '../../types';
 
 export const HydrationSupplementsCard: React.FC = () => {
-  const waterMl = useFitnessStore((state) => state.getWaterForDate());
+  const selectedDate = useFitnessStore((state) => state.selectedDate);
+  const waterLogs = useFitnessStore((state) => state.waterLogs);
+  const supplementsMap = useFitnessStore((state) => state.supplements);
   const waterTarget = useFitnessStore((state) => state.targets.waterMl);
   const addWater = useFitnessStore((state) => state.addWater);
   const setWater = useFitnessStore((state) => state.setWater);
-
-  const supplements = useFitnessStore((state) => state.getSupplementsForDate());
   const toggleSupplement = useFitnessStore((state) => state.toggleSupplement);
+
+  const waterMl = (waterLogs || {})[selectedDate] || 0;
+  const supplements = useMemo(() => {
+    return (
+      (supplementsMap || {})[selectedDate] || {
+        creatine: false,
+        vitamins: false,
+        electrolytes: false,
+      }
+    );
+  }, [supplementsMap, selectedDate]);
 
   const waterPercent = Math.min(100, Math.round((waterMl / waterTarget) * 100));
 

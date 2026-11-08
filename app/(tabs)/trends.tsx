@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { WeightChart } from '../../src/components/trends/WeightChart';
@@ -8,8 +8,14 @@ import { Card } from '../../src/components/common/Card';
 import { Award, Sparkles, Flame, Check } from 'lucide-react-native';
 
 export default function TrendsScreen() {
-  const currentWeight = useFitnessStore((state) => state.getCurrentWeight());
+  const weightLogs = useFitnessStore((state) => state.weightLogs);
   const targetWeight = useFitnessStore((state) => state.targets.targetWeightKg);
+
+  const currentWeight = useMemo(() => {
+    if (!weightLogs || weightLogs.length === 0) return 80.0;
+    return weightLogs[weightLogs.length - 1].weightKg;
+  }, [weightLogs]);
+
   const startWeight = 85.0;
 
   const totalToLose = startWeight - targetWeight; // 8.0 kg

@@ -23,7 +23,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Unhandled error caught by ErrorBoundary:', error, errorInfo);
+    console.error('Unhandled error caught by ErrorBoundary:', error);
+    console.error('ERROR STACK:', error.stack);
+    console.error('COMPONENT STACK:', errorInfo.componentStack);
   }
 
   handleReset = async () => {
