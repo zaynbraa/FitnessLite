@@ -25,20 +25,26 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     const checkUnlockStatus = async () => {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored === 'true') {
+        if (mounted && stored === 'true') {
           setIsUnlocked(true);
         }
       } catch (e) {
         console.error('Error reading auth state:', e);
       } finally {
-        setIsChecking(false);
+        if (mounted) {
+          setIsChecking(false);
+        }
       }
     };
 
     checkUnlockStatus();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleKeyPress = useCallback(
@@ -80,18 +86,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     }
   }, [pin]);
 
-  if (isChecking) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
-  }
-
-  if (isUnlocked) {
-    return <>{children}</>;
-  }
-
   const digits = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -100,91 +94,117 @@ export const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        {/* Lock Icon */}
-        <View style={styles.iconCircle}>
-          <Lock size={28} color="#007AFF" strokeWidth={2} />
-        </View>
+    <View style={styles.rootContainer}>
+      {/* 
+        Always render children so Expo Router Stack stays mounted.
+        This completely eliminates hydration crashes and route unmounting!
+      */}
+      {children}
 
-        {/* Title */}
-        <Text style={styles.title}>FitnessLite</Text>
-        <Text style={styles.subtitle}>
-          {hasError ? 'Incorrect Passcode' : 'Enter 4-Digit Passcode'}
-        </Text>
+      {/* Lock Screen Overlay (Only shown while checking or locked) */}
+      {(!isUnlocked || isChecking) && (
+        <View style={styles.overlay}>
+          <SafeAreaView style={styles.safeContainer}>
+            {isChecking ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#007AFF" />
+              </View>
+            ) : (
+              <View style={styles.content}>
+                {/* Lock Icon */}
+                <View style={styles.iconCircle}>
+                  <Lock size={28} color="#007AFF" strokeWidth={2} />
+                </View>
 
-        {/* 4 Pin Circles */}
-        <View style={styles.pinCirclesContainer}>
-          {[0, 1, 2, 3].map((index) => {
-            const isFilled = pin.length > index;
-            return (
-              <View
-                key={index}
-                style={[
-                  styles.pinCircle,
-                  isFilled && styles.pinCircleFilled,
-                  hasError && styles.pinCircleError,
-                ]}
-              />
-            );
-          })}
-        </View>
+                {/* Title */}
+                <Text style={styles.title}>FitnessLite</Text>
+                <Text style={styles.subtitle}>
+                  {hasError ? 'Incorrect Passcode' : 'Enter 4-Digit Passcode'}
+                </Text>
 
-        {/* Keypad */}
-        <View style={styles.keypad}>
-          {digits.map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keypadRow}>
-              {row.map((item, colIndex) => {
-                if (item === '') {
-                  return <View key={colIndex} style={styles.keyButtonPlaceholder} />;
-                }
-                if (item === 'delete') {
-                  return (
-                    <TouchableOpacity
-                      key={colIndex}
-                      onPress={handleDelete}
-                      style={styles.keyButtonSpecial}
-                      activeOpacity={0.6}
-                    >
-                      <Delete size={22} color="#000000" strokeWidth={1.75} />
-                    </TouchableOpacity>
-                  );
-                }
-                return (
-                  <TouchableOpacity
-                    key={colIndex}
-                    onPress={() => handleKeyPress(item)}
-                    style={styles.keyButton}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={styles.keyNumber}>{item}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-        </View>
+                {/* 4 Pin Circles */}
+                <View style={styles.pinCirclesContainer}>
+                  {[0, 1, 2, 3].map((index) => {
+                    const isFilled = pin.length > index;
+                    return (
+                      <View
+                        key={index}
+                        style={[
+                          styles.pinCircle,
+                          isFilled && styles.pinCircleFilled,
+                          hasError && styles.pinCircleError,
+                        ]}
+                      />
+                    );
+                  })}
+                </View>
 
-        {/* Private Local Device Note */}
-        <View style={styles.footerNote}>
-          <ShieldCheck size={13} color="#8E8E93" strokeWidth={2} style={{ marginRight: 5 }} />
-          <Text style={styles.footerText}>Private Offline Vault • Unlocked on this device</Text>
+                {/* Keypad */}
+                <View style={styles.keypad}>
+                  {digits.map((row, rowIndex) => (
+                    <View key={rowIndex} style={styles.keypadRow}>
+                      {row.map((item, colIndex) => {
+                        if (item === '') {
+                          return <View key={colIndex} style={styles.keyButtonPlaceholder} />;
+                        }
+                        if (item === 'delete') {
+                          return (
+                            <TouchableOpacity
+                              key={colIndex}
+                              onPress={handleDelete}
+                              style={styles.keyButtonSpecial}
+                              activeOpacity={0.6}
+                            >
+                              <Delete size={22} color="#000000" strokeWidth={1.75} />
+                            </TouchableOpacity>
+                          );
+                        }
+                        return (
+                          <TouchableOpacity
+                            key={colIndex}
+                            onPress={() => handleKeyPress(item)}
+                            style={styles.keyButton}
+                            activeOpacity={0.6}
+                          >
+                            <Text style={styles.keyNumber}>{item}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+
+                {/* Private Local Device Note */}
+                <View style={styles.footerNote}>
+                  <ShieldCheck size={13} color="#8E8E93" strokeWidth={2} style={{ marginRight: 5 }} />
+                  <Text style={styles.footerText}>Private Offline Vault • Saved on this device</Text>
+                </View>
+              </View>
+            )}
+          </SafeAreaView>
         </View>
-      </View>
-    </SafeAreaView>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#F2F2F7',
+    zIndex: 999999,
+  },
+  safeContainer: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#F2F2F7',
   },
   content: {
     flex: 1,

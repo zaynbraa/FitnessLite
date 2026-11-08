@@ -30,35 +30,36 @@ export const WeightChart: React.FC = () => {
   const innerHeight = chartHeight - paddingTop - paddingBottom;
 
   // Use up to last 10-14 data points
-  const displayLogs = weightLogs.slice(-10);
+  const displayLogs = (weightLogs || []).slice(-10);
 
   // Compute 7-day moving average array
   const movingAvgData = displayLogs.map((item, idx) => {
     const startIdx = Math.max(0, idx - 6);
     const subset = displayLogs.slice(startIdx, idx + 1);
-    const avg = subset.reduce((sum, d) => sum + d.weightKg, 0) / subset.length;
+    const avg = subset.reduce((sum, d) => sum + d.weightKg, 0) / (subset.length || 1);
     return { date: item.date, avg: Number(avg.toFixed(2)) };
   });
 
   // Min and max for scaling
   const allWeights = [
-    ...displayLogs.map((d) => d.weightKg),
-    ...movingAvgData.map((d) => d.avg),
-    targetWeight,
+    ...(displayLogs.length > 0 ? displayLogs.map((d) => d.weightKg) : [80]),
+    ...(movingAvgData.length > 0 ? movingAvgData.map((d) => d.avg) : [80]),
+    targetWeight || 77,
   ];
   const minWeight = Math.floor(Math.min(...allWeights) - 0.5);
   const maxWeight = Math.ceil(Math.max(...allWeights) + 0.5);
+  const weightRange = Math.max(1, maxWeight - minWeight);
 
   const getX = (index: number) => {
     if (displayLogs.length <= 1) return paddingLeft + innerWidth / 2;
-    return paddingLeft + (index / (displayLogs.length - 1)) * innerWidth;
+    return paddingLeft + (index / Math.max(1, displayLogs.length - 1)) * innerWidth;
   };
 
   const getY = (val: number) => {
     return (
       paddingTop +
       innerHeight -
-      ((val - minWeight) / (maxWeight - minWeight)) * innerHeight
+      ((val - minWeight) / weightRange) * innerHeight
     );
   };
 

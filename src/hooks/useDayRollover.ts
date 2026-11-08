@@ -7,29 +7,50 @@ export function useDayRollover() {
 
   useEffect(() => {
     // 1. Initial check on mount/load
-    checkAndRolloverDay();
+    try {
+      checkAndRolloverDay();
+    } catch (e) {
+      console.error('Error in initial day rollover:', e);
+    }
 
     // 2. 60-second polling interval
     const intervalId = setInterval(() => {
-      checkAndRolloverDay();
+      try {
+        checkAndRolloverDay();
+      } catch (e) {
+        console.error('Error in interval day rollover:', e);
+      }
     }, 60 * 1000);
 
     // 3. React Native AppState listener (active / foreground)
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        checkAndRolloverDay();
-      }
-    });
+    let subscription: any = null;
+    try {
+      subscription = AppState.addEventListener('change', (nextAppState) => {
+        if (nextAppState === 'active') {
+          checkAndRolloverDay();
+        }
+      });
+    } catch {
+      // safe fallback on platforms without AppState
+    }
 
     // 4. Web / PWA document visibilitychange & window focus listeners
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          checkAndRolloverDay();
+          try {
+            checkAndRolloverDay();
+          } catch (e) {
+            console.error('Error in visibility rollover:', e);
+          }
         }
       };
       const handleWindowFocus = () => {
-        checkAndRolloverDay();
+        try {
+          checkAndRolloverDay();
+        } catch (e) {
+          console.error('Error in focus rollover:', e);
+        }
       };
 
       document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -37,7 +58,9 @@ export function useDayRollover() {
 
       return () => {
         clearInterval(intervalId);
-        subscription.remove();
+        if (subscription && typeof subscription.remove === 'function') {
+          subscription.remove();
+        }
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         window.removeEventListener('focus', handleWindowFocus);
       };
@@ -45,7 +68,9 @@ export function useDayRollover() {
 
     return () => {
       clearInterval(intervalId);
-      subscription.remove();
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      }
     };
   }, [checkAndRolloverDay]);
 }

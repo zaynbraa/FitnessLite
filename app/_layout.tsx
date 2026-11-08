@@ -2,6 +2,7 @@ import "../global.css";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Stack } from "expo-router";
 import { AuthGate } from "../src/components/AuthGate";
+import { ErrorBoundary } from "../src/components/common/ErrorBoundary";
 import { useDayRollover } from "../src/hooks/useDayRollover";
 
 export const unstable_settings = {
@@ -20,10 +21,12 @@ function AppContent() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <AuthGate>
-        <AppContent />
-      </AuthGate>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AuthGate>
+          <AppContent />
+        </AuthGate>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

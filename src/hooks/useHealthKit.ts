@@ -15,13 +15,12 @@ export interface HealthKitState {
   syncWeightToHealthKit: (weightKg: number) => Promise<boolean>;
 }
 
-// Dynamic safe-loader for @kingstinct/react-native-healthkit
+// Dynamic safe-loader for @kingstinct/react-native-healthkit (native iOS only, never on Web/PWA)
 let HealthKitModule: any = null;
 let isNativeModuleReady = false;
 
-if (Platform.OS === 'ios') {
+if (Platform.OS === 'ios' && typeof window === 'undefined') {
   try {
-    // Attempt dynamic require so web/Windows bundles never fail on missing Nitro bindings
     HealthKitModule = require('@kingstinct/react-native-healthkit');
     if (HealthKitModule && typeof HealthKitModule.isHealthDataAvailable === 'function') {
       isNativeModuleReady = HealthKitModule.isHealthDataAvailable();
